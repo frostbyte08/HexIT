@@ -5,12 +5,12 @@ from functools import partial
 from pathlib import Path
 
 import numpy as np
-from PySide6.QtCore import (QEasingCurve, QObject, QPropertyAnimation, QRect, QRunnable,
-                            QSequentialAnimationGroup, QSize, Qt, QThreadPool, QTimer, Signal)
-from PySide6.QtGui import (QColor, QFontDatabase, QFontMetrics, QGuiApplication, QImage, QImageReader,
+from PySide6.QtCore import (QEasingCurve, QPointF, QRectF, QObject, QPropertyAnimation, QRect, QRunnable,
+                            QSequentialAnimationGroup, QSize, Qt, QThreadPool, QTimer, Property, Signal)
+from PySide6.QtGui import (QBrush, QColor, QFontDatabase, QFontMetrics, QGuiApplication, QImage, QImageReader,
                            QKeySequence, QPainter, QPixmap, QShortcut)
 from PySide6.QtWidgets import (QApplication, QBoxLayout, QFileDialog, QFrame, QGraphicsOpacityEffect,
-                               QHBoxLayout, QLabel, QMainWindow, QPushButton, QSizePolicy, QSlider,
+                               QHBoxLayout, QLabel, QMainWindow, QPushButton, QSizePolicy,
                                QStackedWidget, QToolButton, QVBoxLayout, QWidget)
 
 from .extract import cluster, prepare
@@ -77,6 +77,132 @@ def fade(w, a, b, ms=220, delay=0, done=None):
     if done:
         g.finished.connect(done)
     g.start(QSequentialAnimationGroup.DeleteWhenStopped)
+
+
+class SmoothSlider(QWidget):
+    """Custom slider: the knob follows the cursor continuously, glides to the nearest
+    step on release, animates on click / keys / wheel, and grows on hover."""
+    valueChanged = Signal(int)
+
+    def __init__(self, lo=3, hi=10, val=6):
+        super().__init__()
+        self.lo, self.hi, self._v = lo, hi, val
+        self._knob, self._glow, self.drag = float(val), 0.0, False
+        self.setFixedHeight(32)
+        self.setMinimumWidth(120)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFocusPolicy(Qt.StrongFocus)
+        self.a_knob = QPropertyAnimation(self, b"knob", self)
+        self.a_glow = QPropertyAnimation(self, b"glow", self)
+        self.a_glow.setDuration(140)
+
+    def _g(self): return self._knob
+    def _s(self, v): self._knob = v; self.update()
+    def _gg(self): return self._glow
+    def _sg(self, v): self._glow = v; self.update()
+    knob = Property(float, _g, _s)
+    glow = Property(float, _gg, _sg)
+
+    def value(self): return self._v
+
+    def setValue(self, v):
+        v = max(self.lo, min(self.hi, int(v)))
+        self._glide(v)
+        self._set(v)
+
+    def _set(self, v):
+        if v != self._v:
+            self._v = v
+            self.valueChanged.emit(v)
+
+    def _glide(self, target, ms=200):
+        self.a_knob.stop()
+        self.a_knob.setDuration(ms)
+        self.a_knob.setStartValue(self._knob)
+        self.a_knob.setEndValue(float(target))
+        self.a_knob.setEasingCurve(QEasingCurve.OutCubic)
+        self.a_knob.start()
+
+    def _to(self, g):
+        self.a_glow.stop()
+        self.a_glow.setStartValue(self._glow)
+        self.a_glow.setEndValue(g)
+        self.a_glow.start()
+
+    M = 14
+
+    def _x(self, v): return self.M + (v - self.lo) / (self.hi - self.lo) * (self.width() - 2 * self.M)
+    def _val_at(self, x):
+        return self.lo + max(0.0, min(1.0, (x - self.M) / max(1, self.width() - 2 * self.M))) * (self.hi - self.lo)
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.LeftButton:
+            self.drag = True
+            self.setFocus()
+            self._to(1.0)
+            t = self._val_at(e.position().x())
+            self._glide(t, 120)
+            self._set(round(t))
+
+    def mouseMoveEvent(self, e):
+        if self.drag:
+            t = self._val_at(e.position().x())
+            if self.a_knob.state() == QPropertyAnimation.Running:
+                self.a_knob.setEndValue(t)  # keep easing toward the cursor, no jump
+            else:
+                self._knob = t
+                self.update()
+            self._set(round(t))
+
+    def mouseReleaseEvent(self, e):
+        if self.drag:
+            self.drag = False
+            self._to(0.5 if self.underMouse() else 0.0)
+            self._glide(self._v, 220)
+
+    def enterEvent(self, e): self._to(0.5)
+    def leaveEvent(self, e):
+        if not self.drag:
+            self._to(0.0)
+
+    def wheelEvent(self, e):
+        self.setValue(self._v + (1 if e.angleDelta().y() > 0 else -1))
+        e.accept()
+
+    def keyPressEvent(self, e):
+        k = {Qt.Key_Left: -1, Qt.Key_Down: -1, Qt.Key_Right: 1, Qt.Key_Up: 1}.get(e.key())
+        if k:
+            self.setValue(self._v + k)
+        elif e.key() == Qt.Key_Home:
+            self.setValue(self.lo)
+        elif e.key() == Qt.Key_End:
+            self.setValue(self.hi)
+        else:
+            super().keyPressEvent(e)
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        cy, kx = self.height() / 2, self._x(self._knob)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor("#26262a"))
+        p.drawRoundedRect(QRectF(self.M, cy - 2, self.width() - 2 * self.M, 4), 2, 2)
+        p.setBrush(QColor("#e8e4d9"))
+        p.drawRoundedRect(QRectF(self.M, cy - 2, max(0, kx - self.M), 4), 2, 2)
+        for v in range(self.lo, self.hi + 1):  # step ticks
+            x = self._x(v)
+            p.setBrush(QColor("#0b0b0c") if x <= kx else QColor("#3a3a40"))
+            p.drawEllipse(QPointF(x, cy), 1.5, 1.5)
+        g = self._glow
+        if g > 0.01:
+            p.setBrush(QColor(232, 228, 217, int(45 * g)))
+            p.drawEllipse(QPointF(kx, cy), 8 + 7 * g, 8 + 7 * g)
+        p.setBrush(QColor("#ffffff") if g > 0.4 else QColor("#e8e4d9"))
+        p.drawEllipse(QPointF(kx, cy), 7 + 1.5 * g, 7 + 1.5 * g)
+        if self.hasFocus() and not self.drag:
+            p.setBrush(Qt.NoBrush)
+            p.setPen(QColor("#8b8b93"))
+            p.drawEllipse(QPointF(kx, cy), 11, 11)
 
 
 class Sig(QObject):
@@ -279,10 +405,7 @@ class Window(QMainWindow):
         body.addLayout(right, 1)
         ctl = QHBoxLayout()
         ctl.setSpacing(12)
-        self.slider = QSlider(Qt.Horizontal)
-        self.slider.setRange(3, 10)
-        self.slider.setValue(6)
-        self.slider.setCursor(Qt.PointingHandCursor)
+        self.slider = SmoothSlider(3, 10, 6)
         self.nl = QLabel("6")
         self.nl.setFont(mono(16, True))
         self.nl.setMinimumWidth(26)
