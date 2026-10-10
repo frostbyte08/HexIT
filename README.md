@@ -1,4 +1,4 @@
-# hexit
+# HexIT
 
 Desktop image-to-color palette generator for **Windows, macOS and Linux**. Fully local: no network, no uploads.
 
@@ -7,8 +7,12 @@ Drop an image, get a palette ranked by prominence. Click a swatch to copy its HE
 ## Features
 - Drag-and-drop or file picker (PNG / JPG / JPEG / WEBP); EXIF orientation respected
 - Palette size 3-10 (default 6), regenerate, per-swatch removal
+- Responsive layout, animated swatches, in-window toasts; clustering runs on a background thread so the UI never blocks
 - Click-to-copy HEX; RGB / HSL details on hover or via the Details toggle
 - Copy all HEX (one per line), export PNG, JSON (HEX/RGB/HSL) and CSS custom properties
+
+## Shortcuts
+`Ctrl+O` open · `Ctrl+V` paste image or file · `R` regenerate · `D` details · `Ctrl+Shift+C` copy all HEX
 
 ## Run
 Requires Python 3.9+.
@@ -17,19 +21,19 @@ Requires Python 3.9+.
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-python -m hexit              # or: python -m hexit path/to/image.png
+python -m HexIT              # or: python -m HexIT path/to/image.png
 ```
 
-Or install the `hexit` command: `pip install .`
+Or install the `HexIT` command: `pip install .`
 
 ## Build a standalone app (optional)
 ```bash
 pip install pyinstaller
-pyinstaller --windowed --name hexit hexit/__main__.py   # run from the repo root
+pyinstaller --windowed --name HexIT HexIT/__main__.py   # run from the repo root
 ```
 The app appears in `dist/`. Build on each OS you want to target.
 
-## How extraction works (`hexit/extract.py`)
+## How extraction works (`HexIT/extract.py`)
 1. The image is downscaled to at most 160 px for processing; the original is never modified.
 2. Pixels with alpha < 125 are ignored; the rest are bucketed (5 bits/channel) to reduce noise.
 3. Buckets are converted to CIELAB and clustered with weighted k-means++ (seeded; Regenerate changes the seed).

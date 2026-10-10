@@ -48,17 +48,24 @@ def _kmeans(X, w, k, rng, iters=20):
     return C, np.bincount(a, weights=w, minlength=len(C))
 
 
-def extract(rgba, k=6, seed=1, min_alpha=125, merge_de=8.0):
-    """rgba: (H, W, 4) uint8. Returns [{'rgb': (r, g, b), 'pct': float}] ranked by share."""
+def prepare(rgba, min_alpha=125):
+    """Bucket pixels once per image -> (Lab samples, weights). Reused for every k / seed."""
     px = rgba.reshape(-1, 4)
     px = px[px[:, 3] >= min_alpha][:, :3].astype(int)
     if not len(px):
-        return []
+        return None
     # 5-bit-per-channel buckets: denoise and collapse pixels into weighted samples
     key = (px[:, 0] >> 3) << 10 | (px[:, 1] >> 3) << 5 | px[:, 2] >> 3
     _, inv, cnt = np.unique(key, return_inverse=True, return_counts=True)
     mean = np.stack([np.bincount(inv, px[:, i]) / cnt for i in range(3)], 1)
-    X, w = rgb_to_lab(mean), cnt.astype(float)
+    return rgb_to_lab(mean), cnt.astype(float)
+
+
+def cluster(prep, k=6, seed=1, merge_de=8.0):
+    """Returns [{'rgb', 'hex', 'pct'}] ranked by pixel share."""
+    if prep is None:
+        return []
+    X, w = prep
     C, n = _kmeans(X, w, k, np.random.default_rng(seed))
     items = sorted([[c, v] for c, v in zip(C, n) if v > 0], key=lambda t: -t[1])
     i = 0
@@ -74,4 +81,10 @@ def extract(rgba, k=6, seed=1, min_alpha=125, merge_de=8.0):
     items.sort(key=lambda t: -t[1])
     rgb = lab_to_rgb(np.array([t[0] for t in items]))
     total = sum(t[1] for t in items)
-    return [{"rgb": tuple(int(v) for v in r), "pct": t[1] / total * 100} for r, t in zip(rgb, items)]
+    return [{"rgb": tuple(int(v) for v in r), "hex": "#%02X%02X%02X" % tuple(int(v) for v in r),
+             "pct": t[1] / total * 100} for r, t in zip(rgb, items)]
+
+
+def extract(rgba, k=6, seed=1):
+    """Convenience: rgba (H, W, 4) uint8 -> palette."""
+    return cluster(prepare(rgba), k, seed)
