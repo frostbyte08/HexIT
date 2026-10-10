@@ -208,7 +208,7 @@ class Swatch(QFrame):
 class Window(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Chromatic — Image to palette")
+        self.setWindowTitle("HexIT — Image to palette")
         self.resize(1120, 700)
         self.setMinimumSize(760, 520)
         self.setAcceptDrops(True)
@@ -226,7 +226,7 @@ class Window(QMainWindow):
         rl.setContentsMargins(32, 22, 32, 28)
         rl.setSpacing(0)
         head = QHBoxLayout()
-        logo = QLabel("◐ Chromatic")
+        logo = QLabel("◐ HexIT")
         logo.setStyleSheet("font-size:19px;font-weight:600")
         head.addWidget(logo)
         head.addSpacing(10)
