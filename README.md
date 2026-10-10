@@ -1,4 +1,4 @@
-# HexIT
+# hexIT
 
 Desktop image-to-color palette generator for **Windows, macOS and Linux**. Fully local: no network, no uploads.
 
@@ -21,19 +21,19 @@ Requires Python 3.9+.
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-python -m HexIT              # or: python -m HexIT path/to/image.png
+python -m hexit              # or: python -m hexit path/to/image.png
 ```
 
-Or install the `HexIT` command: `pip install .`
+Or install the `hexit` command: `pip install .`
 
 ## Build a standalone app (optional)
 ```bash
 pip install pyinstaller
-pyinstaller --windowed --name HexIT HexIT/__main__.py   # run from the repo root
+pyinstaller --windowed --name hexit hexit/__main__.py   # run from the repo root
 ```
 The app appears in `dist/`. Build on each OS you want to target.
 
-## How extraction works (`HexIT/extract.py`)
+## How extraction works (`hexit/extract.py`)
 1. The image is downscaled to at most 160 px for processing; the original is never modified.
 2. Pixels with alpha < 125 are ignored; the rest are bucketed (5 bits/channel) to reduce noise.
 3. Buckets are converted to CIELAB and clustered with weighted k-means++ (seeded; Regenerate changes the seed).
